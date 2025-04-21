@@ -4,7 +4,16 @@ namespace Doula_Course\App\Tmpl;
 
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
+var_export($post_settings);
 
+
+if ( isset( $post_settings['assignment_upload_limit_extensions'] ) && ! empty( $post_settings['assignment_upload_limit_extensions'] )) { 
+
+var_export($post_settings['assignment_upload_limit_extensions']);
+    
+    }
+    
+/*
 function nb_build_content_to_assignment_array( $user_id )
 {
 	global $wpdb;
@@ -56,7 +65,7 @@ print_pre( $array_of_user_info, 'The list of all content to assignments per user
 echo "The Sandbox has been loaded! <br>";
 
 
-
+*/
 
 
 /*
@@ -133,4 +142,4 @@ echo "<hr>";
 */
 
 
-?>	
+?>

@@ -216,10 +216,10 @@ function nb_reactivated_status( $old_status, $new_status, $membership_id ) {
 	
 	if( in_array( $old_status, $old_stati )  && ( strcmp( $new_status, 'active' ) == 0 ) ){
 		
-		rcp_log( "The users's role has been activated so we need to send them an email." );
+		rcp_log( "The users's role for {$user->first_name} {$user->last_name} (id:{$user->ID}) has been reactivated so we need to send an admin notice." );
 		// The status has changed to 'active', send an email
         $to = 'office@trainingdoulas.com';
-        $subject = 'Student Account Reactivated';
+        $subject = "Student Account Reactivated for {$user->first_name} {$user->last_name} (ID:{$user->ID})";
         $message = "The subscription for {$user->first_name} {$user->last_name} (id:{$user->ID}) has been REACTIVATED! (Please make any adjustments to other student records as needed.)";
         wp_mail( $to, $subject, $message );
 
@@ -229,5 +229,17 @@ function nb_reactivated_status( $old_status, $new_status, $membership_id ) {
 
 
 add_action( 'rcp_transition_membership_status', 'Doula_Course\App\Func\nb_reactivated_status', 20, 3 );
+
+//restrict student access to media gallery.
+add_filter( 'ajax_query_attachments_args', 'Doula_Course\App\Func\nb_user_show_attachments' );
+ 
+function nb_user_show_attachments( $query ) {
+    $user_id = get_current_user_id();
+    if ( $user_id && !current_user_can('activate_plugins') && !current_user_can('edit_others_posts
+') ) {
+        $query['author'] = $user_id;
+    }
+    return $query;
+} 
 
 ?>
