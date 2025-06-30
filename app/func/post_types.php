@@ -59,7 +59,7 @@ function register_post_types()
 		'material' => $material_args,
 		'notification' => $notification_args, */
 		'assignment' => $assignment_args,
-		'certificate' => $certificate_args
+		/*'certificate' => $certificate_args */
 	];
 	
 	$results = [];

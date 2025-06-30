@@ -276,6 +276,223 @@ function nb_add_admin_style() {
 }
 add_action( 'admin_enqueue_scripts', 'Doula_Course\App\Func\nb_add_admin_style' );
 
+/**
+ * Render the editable trainer course quota table for admins.
+ *
+ * @param array $trainer_quotas  Array of course_id => quota for the trainer.
+ * @param array $available_memberships  Array of all available memberships (membership_id => membership_name).
+ */
+function nbcs_render_trainer_quota_table_admin( $trainer_quotas, $available_memberships ) {
+    // Build a lookup: membership_id => membership_title
+    $id_to_title = [];
+    foreach ($available_memberships as $membership) {
+        $id_to_title[$membership['id']] = $membership['name'];
+    }
 
+    // Build trainer_memberships: each assigned membership with id, title, and quota
+    $trainer_memberships = [];
+    foreach ($trainer_quotas as $membership_id => $quota) {
+        if (isset($id_to_title[$membership_id])) {
+            $trainer_memberships[] = [
+                'id'    => $membership_id,
+                'title' => $id_to_title[$membership_id],
+                'quota' => $quota,
+            ];
+        }
+    }
+
+    // Remove assigned memberships from available_memberships
+    $assigned_membership_ids = array_keys($trainer_quotas);
+    $unassigned_memberships = array_filter(
+        $available_memberships,
+        function($membership) use ($assigned_membership_ids) {
+            return !in_array($membership['id'], $assigned_membership_ids);
+        }
+    );
+
+    // Now use $trainer_memberships and $unassigned_memberships in your table rendering
+    ?>
+    <table class="widefat" style="max-width:600px;">
+        <thead>
+            <tr>
+                <th>Membership</th>
+                <th>Student Quota</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ( $trainer_memberships as $membership ) : ?>
+                <tr>
+                    <td>
+                        <?php echo esc_html( $membership['title'] ); ?>
+                        <input type="hidden" name="nb_trainer_course_quotas_courses[]" value="<?php echo esc_attr( $membership['id'] ); ?>">
+                    </td>
+                    <td>
+                        <input type="number" name="nb_trainer_course_quotas_values[]" value="<?php echo esc_attr( $membership['quota'] ); ?>" min="0" />
+                    </td>
+                    <td>
+                        <button type="button" class="button button-secondary nbcs-remove-quota-row">Remove</button>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            <!-- Row for adding a new membership/quota -->
+            <tr>
+                <td>
+                    <select name="nbcs_new_course">
+                        <option value="">-- Select Membership --</option>
+                        <?php foreach ( $unassigned_memberships as $membership ) : ?>
+                            <option value="<?php echo esc_attr( $membership['id'] ); ?>"><?php echo esc_html( $membership['title'] ); ?></option>
+                        <?php endforeach; ?>
+                    </select>*
+                </td>
+                <td>
+                    <input type="number" name="nbcs_new_quota" value="" min="0" placeholder="Quota" />
+                </td>
+                <td>
+                    <button type="button" class="button button-primary nbcs-add-quota-row">Add</button>
+                </td>
+            </tr>
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="3">
+                    <sub>0 = no limit on number of students, * = required field</sub>
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+    <?php
+}
+
+// Get a list of LearnDash courses
+/*function get_learndash_courses_list() {
+    $args = array(
+        'post_type'      => 'sfwd-courses',
+        'posts_per_page' => -1,
+        'post_status'    => 'publish',
+        'orderby'        => 'title',
+        'order'          => 'ASC',
+    );
+    $courses = get_posts($args);
+
+    $course_list = array();
+    foreach ($courses as $course) {
+        $course_list[] = array(
+            'ID'    => $course->ID,
+            'title' => get_the_title($course->ID),
+            'link'  => get_permalink($course->ID),
+        );
+    }
+    return $course_list;
+}*/
+
+/**
+ * Show the trainer quota table on the user profile page (admin only).
+ */
+function nbcs_show_trainer_quota_table_on_profile( $user ) {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    // Get all available memberships
+    $available_memberships = get_memberships_by_role( 'student');
+    if ( ! is_array( $available_memberships ) ) {
+        $available_memberships = [];
+    }
+
+    // Ensure available memberships are in the format id => title
+    $available_memberships = array_map( function( $membership ) {
+        return [
+            'id'    => $membership['id'],
+            'title' => $membership['name'],
+        ];
+    }, $available_memberships );
+
+    // Filter out any memberships missing id or title
+    $available_memberships = array_filter( $available_memberships, function( $membership ) {
+        return ! empty( $membership['id'] ) && ! empty( $membership['title'] );
+    } );
+    
+    // Ensure we have a valid format for the available memberships
+    if ( empty( $available_memberships ) ) {
+        echo '<p>No available memberships found.</p>';
+        return;
+    }
+    // Get current quotas from user meta
+    $trainer_quotas = get_user_meta( $user->ID, 'nb_trainer_course_quotas', true );
+    if ( ! is_array( $trainer_quotas ) ) {
+        $trainer_quotas = [];
+    }
+
+    echo '<h2>Trainer Membership Student Quotas</h2>';
+    nbcs_render_trainer_quota_table_admin( $trainer_quotas, $available_memberships );
+}
+add_action( 'show_user_profile', 'Doula_Course\App\Func\nbcs_show_trainer_quota_table_on_profile' );
+add_action( 'edit_user_profile', 'Doula_Course\App\Func\nbcs_show_trainer_quota_table_on_profile' );
+
+/**
+ * Save the trainer quotas when the user profile is updated.
+ */
+function nbcs_save_trainer_quota_table_on_profile( $user_id ) {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    // Prepare new quotas array
+    $quotas = [];
+    if ( isset( $_POST['nb_trainer_course_quotas_courses'], $_POST['nb_trainer_course_quotas_values'] ) ) {
+        $courses = (array) $_POST['nb_trainer_course_quotas_courses'];
+        $values  = (array) $_POST['nb_trainer_course_quotas_values'];
+        foreach ( $courses as $i => $course_id ) {
+            $quota = isset( $values[$i] ) ? intval( $values[$i] ) : 0;
+            $quotas[ sanitize_text_field( $course_id ) ] = $quota;
+        }
+    }
+
+    // Handle new course/quota addition
+    if ( ! empty( $_POST['nbcs_new_course'] ) && isset( $_POST['nbcs_new_quota'] ) ) {
+        $new_course = sanitize_text_field( $_POST['nbcs_new_course'] );
+        $new_quota  = intval( $_POST['nbcs_new_quota'] );
+        $quotas[ $new_course ] = $new_quota;
+    }
+
+    update_user_meta( $user_id, 'nb_trainer_course_quotas', $quotas );
+}
+add_action( 'personal_options_update', 'Doula_Course\App\Func\nbcs_save_trainer_quota_table_on_profile' );
+add_action( 'edit_user_profile_update', 'Doula_Course\App\Func\nbcs_save_trainer_quota_table_on_profile' );
+
+/**
+ * Get memberships by user role
+ *
+ * This function retrieves all active membership levels and filters them by a specific user role if provided.
+ *
+ * @param string|null $target_role The user role to filter memberships by. If null, all memberships are returned.
+ * @return array An array of membership details.
+ */
+function get_memberships_by_role($target_role = null) {
+    // Get all active membership levels
+    $memberships = rcp_get_membership_levels(array(
+        'status' => 'active'
+    ));
+    
+    $membership_array = array();
+    
+    foreach ($memberships as $membership) {
+        $membership_role = $membership->role;
+        
+        // If a specific role is requested, filter by it
+        if ($target_role && $membership_role !== $target_role) {
+            continue;
+        }
+        
+        $membership_array[] = array(
+            'id' => $membership->id,
+            'name' => $membership->name,
+            'role' => $membership_role,
+        );
+    }
+    
+    return $membership_array;
+}
 
 ?>

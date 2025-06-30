@@ -73,7 +73,7 @@ function assign_student_trainer( $membership_id, $data ){
 
 	$student_id = $data->get_user_id();
 
-	//If the user is not a student, then we do need to not assign them a trainer. 
+	//If the user is not a student, then we do not need to assign them a trainer. 
 	$user = get_user_by( 'id', $student_id ); 
 	if( !in_array( 'student', (array) $user->roles ) ) return; 
 
